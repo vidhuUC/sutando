@@ -101,5 +101,17 @@ for msg in sorted(messages, key=lambda m: int(m["id"])):
         continue
     author = msg.get("author", {}).get("username", "?")
     content = msg.get("content", "")[:200]
-    ts = msg.get("timestamp", "")[:19]
+    # Discord API timestamps are UTC ISO strings. Render in America/New_York —
+    # Susan's standing rule: NEVER surface UTC times (2026-07-21: raw UTC here
+    # led the agent to say "1am, goodnight" at 7:47pm ET, among repeated misses).
+    _raw = msg.get("timestamp", "")
+    try:
+        from datetime import datetime, timezone
+        from zoneinfo import ZoneInfo
+        _dt = datetime.fromisoformat(_raw.replace("Z", "+00:00"))
+        if _dt.tzinfo is None:
+            _dt = _dt.replace(tzinfo=timezone.utc)
+        ts = _dt.astimezone(ZoneInfo("America/New_York")).strftime("%Y-%m-%dT%H:%M:%S ET")
+    except Exception:
+        ts = _raw[:19] + " UTC"  # honest fallback label, never a bare ambiguous time
     print(f"[{ts}] {author}: {content}")
