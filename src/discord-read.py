@@ -101,17 +101,26 @@ for msg in sorted(messages, key=lambda m: int(m["id"])):
         continue
     author = msg.get("author", {}).get("username", "?")
     content = msg.get("content", "")[:200]
-    # Discord API timestamps are UTC ISO strings. Render in America/New_York —
-    # Susan's standing rule: NEVER surface UTC times (2026-07-21: raw UTC here
-    # led the agent to say "1am, goodnight" at 7:47pm ET, among repeated misses).
+    # Discord API timestamps are UTC ISO strings. Render in the USER'S timezone
+    # (Susan 2026-07-21 "改成 user config 的 timezone", after raw UTC here led the
+    # agent to say "1am, goodnight" at 7:47pm local). Resolution: OWNER_TZ env
+    # (existing convention — phone-conversation server) > the host OS timezone
+    # (the user's own system setting). Label comes from %Z so it's always explicit
+    # (EDT/EST/PST/...); the failure fallback is labeled UTC, never a bare time.
     _raw = msg.get("timestamp", "")
     try:
+        import os as _os
         from datetime import datetime, timezone
-        from zoneinfo import ZoneInfo
         _dt = datetime.fromisoformat(_raw.replace("Z", "+00:00"))
         if _dt.tzinfo is None:
             _dt = _dt.replace(tzinfo=timezone.utc)
-        ts = _dt.astimezone(ZoneInfo("America/New_York")).strftime("%Y-%m-%dT%H:%M:%S ET")
+        _own = _os.environ.get("OWNER_TZ")
+        if _own:
+            from zoneinfo import ZoneInfo
+            _local = _dt.astimezone(ZoneInfo(_own))
+        else:
+            _local = _dt.astimezone()  # host OS timezone = the user's configured tz
+        ts = _local.strftime("%Y-%m-%dT%H:%M:%S %Z")
     except Exception:
         ts = _raw[:19] + " UTC"  # honest fallback label, never a bare ambiguous time
     print(f"[{ts}] {author}: {content}")
